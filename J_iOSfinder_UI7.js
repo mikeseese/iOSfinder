@@ -76,9 +76,7 @@ var PingSensor = (function (api) {
 			if(isNaN(timeout)) timeout = 0;
 
 			var html =  '<table>' +
-			' <tr><td>Address </td><td><input  type="text" id="ping_address" size=10 value="' +  address + '" onchange="PingSensor.address_set(' + deviceID + ', this.value);"></td></tr>' +
-			  ' <tr><td>Address2 </td><td><input  type="text" id="ping_address2" size=10 value="' +  address2 + '" onchange="PingSensor.address2_set(' + deviceID + ', this.value);"></td></tr>' +
-			  ' <tr><td>Address3 </td><td><input  type="text" id="ping_address3" size=10 value="' +  address3 + '" onchange="PingSensor.address3_set(' + deviceID + ', this.value);"></td></tr>' +
+			' <tr><td>Address </td><td><input  type="text" id="ping_address" size=80 value="' +  address + '" onchange="PingSensor.address_set(' + deviceID + ', this.value);"></td></tr>' +
 				' <tr><td>Poll Period </td><td><input  type="text" id="ping_period" size=10 value="' +  period + '" onchange="PingSensor.period_set(' + deviceID + ', this.value);"> seconds</td></tr>' +
 				' <tr><td>Device Timeout </td><td><input type="text" id="ping_timeout" size=10 value="' +  timeout + '" onblur="PingSensor.update_timeout(' + deviceID + ');" onchange="PingSensor.timeout_set(' + deviceID + ', this.value);"> seconds</td></tr>' +
 				'</table>';
