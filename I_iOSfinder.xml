@@ -172,37 +172,47 @@
     --                "0", if host has not responded. No matter for what reason. (error, latency, ...)
     --
     local function executePing(address)
+--      local currentFailureCount = luup.variable_get(PING_SID, "CurrentFailureCount", parentDevice)
       local command = "ip neigh | grep " .. address
       local returnCode = os.execute(command .. " | grep FAILED")
       -- local returnCode = os.execute("ping -c 1 " .. address)
 
       if (returnCode == 0) then
-        log("we found an entry in the arp cache, it says it's failed. device is AWAY")
+--      if (returnCode == 0) and (currentFailureCount < 10) then
+      	local returnCode = os.execute("ping -c 1 " .. address)
+      	local returnCode = os.execute("ping -c 1 " .. address)
+--        log("# we found an entry in the arp cache, it says it's failed. execute ping. device is AWAY FC: currentFailureCount")
         return "0"
       else
         returnCode = os.execute(command)
         if (returnCode == 0) then
-          log("we found an arp entry that isn't FAILED, device is on network")
+          log("* we found an arp entry that isn't FAILED, device is on network")
           return "1"
         else
           log("we couldn't find any arp entry. let's try pinging to add the arp entry")
           returnCode = os.execute("ping -c 1 " .. address)
+          returnCode = os.execute("ping -c 1 " .. address)
           if (returnCode == 0) then
-            log("reached the host through ping, they are on network")
+            log("** reached the host through ping, they are on network")
             return "1"
           else
             log("check arp entry one more time in case phone is asleep and won't respond to pings")
+          	eturnCode = os.execute("ping -c 1 " .. address)
+          	returnCode = os.execute("ping -c 1 " .. address)
             returnCode = os.execute(command .. " | grep FAILED")
             if (returnCode == 0) then
-              log("we found an entry in the arp cache, it says it's failed. device is AWAY")
-              return "0"
+              log("## we found an entry in the arp cache, it says it's failed. device is AWAY")
+--              return "0"
+              return "1"
             else
+          		returnCode = os.execute("ping -c 1 " .. address)
+          		returnCode = os.execute("ping -c 1 " .. address)
               returnCode = os.execute(command)
               if (returnCode == 0) then
-                log("we found an arp entry that isn't FAILED, device is on netowrk")
+                log("*** we found an arp entry that isn't FAILED, device is on netowrk")
                 return "1"
               else
-                log("we couldn't find any arp entry after ping, device is definitly AWAY")
+                log("### we couldn't find any arp entry after ping, device is definitly AWAY")
                 return "0"
               end
             end
