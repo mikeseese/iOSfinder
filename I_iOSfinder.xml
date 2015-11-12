@@ -2,278 +2,353 @@
 <implementation>
   <specVersion>
     <major>1</major>
-    <minor>2</minor>
+    <minor>5</minor>
   </specVersion>
   <settings>
     <protocol>cr</protocol>
   </settings>
   <startup>main</startup>
   <functions>
+    local PING_SID = "urn:demo-ron-seese:serviceId:iOSfinder1"
+    local SWITCH_SID = "urn:upnp-org:serviceId:SwitchPower1"
+    local SECURITY_SID = "urn:micasaverde-com:serviceId:SecuritySensor1"
+    local HADEVICE_SID = "urn:micasaverde-com:serviceId:HaDevice1"
+    local GATEWAY_SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+
+    local DEBUG_MODE = false
+    local DEFAULT_PERIOD = 15
+    local DEFAULT_ADDRESS = "127.0.0.1"
+
+    local currentFailureCount = 0
+
+    local function log(text)
+      local id = PARENT_DEVICE or "unknown"
+      luup.log("iOSfinder #" .. id .. " " .. text)
+    end
+
+
+    local function debug(text)
+      if (DEBUG_MODE == true) then
+        log(text)
+      end
+    end
+
+
     --
-    -- Read configuration from device. 
-    -- 
+    -- Initializes variables if none were found in config
+    --
+    local function initSettings(address, address2, address3, period, invert, enable, allowedFailure)
+      --
+      -- Create a fallback delay if no parameters are given
+      --
+      if (period == nil or tonumber(period) &lt;= DEFAULT_PERIOD) then
+        period = DEFAULT_PERIOD
+      end
+
+      -- Defaults
+      address = address or DEFAULT_ADDRESS
+      address2 = address2 or DEFAULT_ADDRESS
+      address3 = address3 or DEFAULT_ADDRESS
+      enable = enable or "1"
+      invert = invert or 0
+      allowedFailure = allowedFailure or 0
+
+	  
+      luup.variable_set(PING_SID, "Period", period, parentDevice)
+      luup.variable_set(PING_SID, "Address", address, parentDevice)
+      luup.variable_set(PING_SID, "Address2", address2, parentDevice)
+      luup.variable_set(PING_SID, "Address3", address3, parentDevice)
+      luup.variable_set(PING_SID, "Invert", invert, parentDevice)
+      luup.variable_set(SWITCH_SID, "Target", enable, parentDevice)
+      luup.variable_set(SWITCH_SID, "Status", enable, parentDevice)
+      luup.variable_set(PING_SID, "AllowedFailure", allowedFailure, parentDevice)
+
+      luup.variable_set(HADEVICE_SID, "LastUpdate", os.time(os.date('*t')), parentDevice)
+      luup.variable_set(HADEVICE_SID, "Configured", "1", parentDevice)
+
+      log("Initialized variable: 'Address' = " .. address)
+      log("Initialized variable: 'Address2' = " .. address2)
+      log("Initialized variable: 'Address3' = " .. address3)
+      log("Initialized variable: 'Period' = " .. period)
+      log("Initialized variable: 'Invert' = " .. invert)
+      log("Initialized variable: 'Enable' = " .. enable)
+
+      luup.task("Please restart Luup to initialize the plugin.", 1, "iOS Finder", -1)
+
+      return address, period, invert, enable
+    end
+
+
+    local function readSettings(parentDevice)
+      --
+      -- Get local address and delay between repetition from configuration
+      --
+      local address = luup.variable_get(PING_SID, "Address", parentDevice)
+      local address2 = luup.variable_get(PING_SID, "Address2", parentDevice)
+      local address3 = luup.variable_get(PING_SID, "Address3", parentDevice)
+      local period = luup.variable_get(PING_SID, "Period", parentDevice)
+      local invert = luup.variable_get(PING_SID, "Invert", parentDevice)
+      local enable = luup.variable_get(SWITCH_SID, "Status", parentDevice)
+      local allowedFailure = luup.variable_get(PING_SID, "AllowedFailure", parentDevice)
+
+      --
+      -- init configuration variables if they were empty
+      --
+      if (address == nil or address2 == nil or address3 == nil or period == nil or invert == nil or enable == nil or allowedFailure == nil) then
+        address, address2, address3, period, invert, enable = initSettings(address, address2, address3, period, invert, enable, allowedFailure)
+      end
+
+      return address, address2, address3, period, invert, enable
+    end
+
+
+    --
+    -- Read configuration from device.
+    --
     -- Here we get destination hosts address for ping and
-   	-- the time of delay between two pings in seconds
+    -- the time of delay between two pings in seconds
     --
     -- Thanks go out to *Guessed* from micasaverde forum for his great weather plugin.
     -- Without his work this never would have been possible in such a short time.
     --
-    
-    
     --
     -- The main function is used for starting up device
     --
+	local function checkVersion()
+		local ui7Check = luup.variable_get(PING_SID, "UI7Check", PARENT_DEVICE) or ""
+		if ui7Check == "" then
+			luup.variable_set(PING_SID, "UI7Check", "false", PARENT_DEVICE)
+			ui7Check = "false"
+		end
+		if( luup.version_branch == 1 and luup.version_major == 7 and ui7Check == "false") then
+			luup.variable_set(PING_SID, "UI7Check", "true", PARENT_DEVICE)
+			luup.attr_set("device_json", "D_iOSfinder_UI7.json", PARENT_DEVICE)
+			luup.reload()
+		end
+	end
+	
     function main(parentDevice)
- 		
-        luup.log("Ping Sensor #" .. tostring(parentDevice) .. " starting up with id " .. luup.devices[parentDevice].id)
-		
-        --
-        -- Validate that the Address/Delay are configured in Vera, otherwise this
-        -- code wont work.
-        --
+      --
+      -- Note these are "pass-by-Global" values that refreshCache will later use.
+      --
+      PARENT_DEVICE = parentDevice
 
-        -- luup.log("Address found was: " .. address .. " / Delay found was: " .. tostring(period) .. "s")
-    
-        local address, period, invert = readSettings(parentDevice)
-    
-        if (address == nil or period == nil) then
-            luup.log("Ping Sensor #" .. tostring(parentDevice) .. " starting up with id " .. luup.devices[parentDevice].id .. "could not be started.")
-            luup.set_failure(true, parentDevice)
-            return false
-        end        
-        
-        
-        --
-        -- Note these are "pass-by-Global" values that refreshCache will later use.
-        --
-		PARENT_DEVICE = parentDevice
-  		PING_ADDRESS = address
-    	PING_DELAY = period
-    	PING_INVERT = invert
-        
-     
-        --
-        -- Do this deferred to avoid slowing down startup processes.
-        --
-        luup.call_timer("refreshCache", 1, "1", "")
-        return true
+      log("starting up")
+	
+	  --check UI version
+	  checkVersion()
+      --
+      -- Validate that the Address/Delay are configured in Vera, otherwise this
+      -- code wont work.
+      --
+      local address, address2, address3, period, invert, enable = readSettings(parentDevice)
+      if (address == nil or period == nil) then
+        log("could not be started.")
+        luup.set_failure(true, parentDevice)
+        return false
+      end
+
+      -- 
+      -- currentFailureCount is persisting over luup engine restart
+      --
+      currentFailureCount = luup.variable_get(PING_SID, "CurrentFailureCount", parentDevice)
+      currentFailureCount = tonumber(currentFailureCount) or 0
+
+      --
+      -- Do this deferred to avoid slowing down startup processes.
+      --
+      luup.call_timer("refreshCache", 1, "1", "")
+      return true
     end
-    
-    function readSettings(parentDevice)
-        local address = ""
-        local period = ""
-        local invert = ""
-    	
-    	--
-    	-- Get local address and delay between repetition from configuration
-        --
-        address = luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Address",parentDevice)
-        period = luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Period",parentDevice)
-        invert = luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Invert",parentDevice)
-        
-        --
-        -- init configuration variables if they were empty
-        --
-		if (address == nil or period == nil or invert == nil) then
-		    initSettings(address, period, invert)
-		  
-		    -- read again
-            address = luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Address",parentDevice)
-            period = luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Period",parentDevice)
-            invert = luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Invert",parentDevice)
-		end
-		
-        return address, period, invert
-    end
-    
+
+
+    -- Execute the ping command with given parameters
     --
-    -- Initializes variables if none were found in config
+    -- address (String):
+    --                IP address or domain name of the destination host
     --
-    function initSettings(address, period, invert)
-        --
-        -- Initialize address, if no value is given
-        --
-        if (address == nil) then
-            address = "127.0.0.1"
-        end
-        
-        --
-        -- Create a fallback delay if no parameters are given
-        --
-        if (period == nil or period &lt;= 15) then
-        	period = 15
-        end
-        
-        --
-        -- Init the red/green circle variable with 0
-        -- 0 = normal mode
-        -- 1 = invert red/green circle
-        --
-        if (invert == nil) then
-        	invert = 0
-        end
-        
-        
-        -- Init variables
-        luup.variable_set("urn:demo-ron-seese:serviceId:iOSfinder1","Address",address,parentDevice)
-        luup.variable_set("urn:demo-ron-seese:serviceId:iOSfinder1","Period",period,parentDevice)
-        luup.variable_set("urn:demo-ron-seese:serviceId:iOSfinder1","Invert",invert,parentDevice)
-        
-        luup.variable_set("urn:micasaverde-com:serviceId:HaDevice1","LastUpdate",os.time(os.date('*t')),parentDevice)
-        luup.variable_set("urn:micasaverde-com:serviceId:HaDevice1","Configured","1",parentDevice)
-        
-        luup.log ("Initialized variable: 'Address' = " .. luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Address",parentDevice))
-        luup.log ("Initialized variable: 'Period' = " .. luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Period",parentDevice))
-        luup.log ("Initialized variable: 'Invert' = " .. luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Invert",parentDevice))
-        
-        --
-		-- due to strange behavior we have to restart the lua engine
-		-- if we wouldn't, the sensor would not appear as sensor in the UI
-		-- (the results of the action call do not matter)
-		--
-		luup.log("RESTARTING LUA TO INITIALIZE PING SENSOR!")
- 		lul_resultcode,lul_resultstring,lul_job,lul_returnarguments = luup.call_action("urn:micasaverde-com:serviceId:HomeAutomationGateway1","Reload",{},0)
+    -- return (Integer):
+    --                "1", if host responded within one second
+    --                "0", if host has not responded. No matter for what reason. (error, latency, ...)
+    --
+    local function executePing(address)
+      local returnCode = os.execute("ping -c 1 " .. address)
+
+      if (returnCode == 0) then
+        -- everything is fine, we reached the host
+        return "1"
+      else
+        -- something went wrong here
+        -- log("abnormal exit while ping execution. ErrorCode: " .. tostring(returnCode))
+        return "0"
+      end
     end
 
 
-	-- Execute the ping command with given parameters
-	--
-	-- address (String):
-	--		IP address or domain name of the destination host
-	--
-	-- return (Integer):
-	--		"1", if host responded within one second
-	--		"0", if host has not responded. No matter for what reason. (error, latency, ...)
-	--
-	function executePing(address)
-		local returnCode
-		
-		returnCode = os.execute("ping -c 1 " .. address)
-		
-		if (returnCode == 0) then
-			-- everything is fine, we reached the host
-			return "1"
-		else
-			-- something went wrong here
-            -- luup.log("Ping Sensor abnormal exit while ping execution. ErrorCode: " .. tostring(returnCode))
-			return "0"
-		end
-	end
-	
-	
-	--
-	-- This function reverts the ping result if neccessary
-	--
-	-- pingResult(String)
-	-- 		Result of executed ping
-	-- invertFlag(String)
-	--		Set to "1" if result should be inverted
-	--		Set to "0" if result should be passed through
-	--
-	-- return (String)
-	-- 		(not) inverted ping result
-	--
-	function invertResult(pingResult, invertFlag)
-		
-		if (invertFlag ~= "0") then
-			if (pingResult == "0") then
-				-- everything is fine, we reached the host and invert result
-				return "1"
-			else
-				return "0"
-			end
-		else
-			return pingResult
-		end
-		
-		
-	end
-
-	--
-	-- Writing the result of our ping to the UI
-	--
-	-- parentDevice:
-	--		The id of the current device
-	-- pingResult:
-	--		A value of "1" for presence detected, a value of "0" for no presence / error occoured
-	--		If invert flag is set to "1" then the value meanings are reversed
     --
-    function setResult(parentDevice,pingResult)
-        -- Store the current ping result only when it has changed
-        local currentState = luup.variable_get("urn:micasaverde-com:serviceId:SecuritySensor1","Tripped",parentDevice) 
-
-        if (currentState ~= pingResult) then
-	        luup.variable_set("urn:micasaverde-com:serviceId:SecuritySensor1","Tripped",pingResult, parentDevice)
-    	    luup.variable_set("urn:micasaverde-com:serviceId:HaDevice1","LastUpdate",os.time(os.date('*t')),parentDevice)
-    	end
+    -- This function reverts the ping result if neccessary
+    --
+    -- pingResult(String)
+    --                 Result of executed ping
+    -- invertFlag(String)
+    --                Set to "1" if result should be inverted
+    --                Set to "0" if result should be passed through
+    --
+    -- return (String)
+    --                 (not) inverted ping result
+    --
+    local function invertResult(pingResult, invertFlag)
+      if (invertFlag ~= "0") then
+        if (pingResult == "0") then
+          -- everything is fine, we reached the host and invert result
+          return "1"
+        else
+          return "0"
+        end
+      else
+        return pingResult
+      end
     end
 
 
-	--
-	-- Here are all functions started in the correct sequence
-	-- triggered by a timer
-	--
-	function refreshCache()
-	
-		-- ping address
-		local pingResult = executePing(PING_ADDRESS)
+    --
+    -- Writing the result of our ping to the UI
+    --
+    -- parentDevice:
+    --                The id of the current device
+    -- pingResult:
+    --                A value of "1" for presence detected, a value of "0" for no presence / error occoured
+    --                If invert flag is set to "1" then the value meanings are reversed
+    --
+    local function setResult(parentDevice, pingResult)
+      -- Store the current ping result only when it has changed
+      local origTripped = luup.variable_get(SECURITY_SID, "Tripped", parentDevice) or "0"
+      local allowedFailure = luup.variable_get(PING_SID, "AllowedFailure", parentDevice) or 0
+	  
+      -- If pingresult is positive, always reset currentFailureCount
+      if (pingResult == "1") then
+        currentFailureCount = 0
+      	luup.variable_set(PING_SID, "CurrentFailureCount", 0, parentDevice)
+      end
 		
-		-- invert if neccessary 
-		local invertResult = invertResult(pingResult, PING_INVERT)
-		
-		-- write result
-		setResult(PARENT_DEVICE,invertResult)
-		
-        --
-        -- The last parameter is temporary, can be removed in later builds once bug fix
-        -- is in place (http://forum.micasaverde.com/index.php?topic=1608.0)
-        --
-        
-		luup.call_timer("refreshCache", 1, tostring(PING_DELAY), "")
-	
-	end
+      -- Last result was positive, current result is negative, and the allowed failures is not reached
+      -- keep pingresult positive as long allowedFailure is not reached
+      if (origTripped == "1" and pingResult == "0" and currentFailureCount &lt; tonumber(allowedFailure)) then
+        pingResult = "1"
+        currentFailureCount = currentFailureCount + 1		
+      	luup.variable_set(PING_SID, "CurrentFailureCount", currentFailureCount, parentDevice)
+        log("ping failed, failure = " .. currentFailureCount .. "/".. allowedFailure)
+      end
+	  
+	  
+      if (origTripped  ~= pingResult) then
+        local time = os.time(os.date('*t'))
+
+        luup.variable_set(SECURITY_SID, "Tripped", pingResult, parentDevice)
+        luup.variable_set(HADEVICE_SID, "LastUpdate", time, parentDevice)
+
+        if ((pingResult == "1") and (origTripped == "0")) then
+          luup.variable_set(SECURITY_SID, "LastTrip", time, parentDevice)
+        end
+      end
+    end
+
+
+    --
+    -- Here are all functions started in the correct sequence
+    -- triggered by a timer
+    --
+    function refreshCache()
+      --
+      -- Reset the timer at the beginning, just in case the subsequent code fails.
+      --
+      -- The last parameter is temporary, can be removed in later builds once bug fix
+      -- is in place (http://forum.micasaverde.com/index.php?topic=1608.0)
+      --
+      local address, address2, address3, period, invert, enable = readSettings(parentDevice)
+      luup.call_timer("refreshCache", 1, tostring(period), "")
+
+      --
+      -- To avoid having to be able to "cancel" a running timer, esp after repeated
+      -- enable/disable calls, we simply "do nothing" in this code if the timer is
+      -- disabled.  The actual timer itself is never stopped, we simply don't respond
+      -- if we're disabled.
+      --
+      if (enable == "1") then
+        -- ping the address, write result, inverted if necessary.
+        setResult(PARENT_DEVICE, invertResult(executePing(address), invert))
+        debug("Ping Enabled, executed")
+      else
+        debug("Ping Disabled, not executed " .. (enable or "No value"))
+      end
+    end
   </functions>
   <actionList>
+    <action>
+      <serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+      <name>SetArmed</name>
+      <run>
+        luup.variable_set(SECURITY_SID, "Armed", lul_settings.newArmedValue, lul_device)
+        return 4, 0
+      </run>
+    </action>
     <action>
       <serviceId>urn:demo-ron-seese:serviceId:iOSfinder1</serviceId>
       <name>GetAddress</name>
       <run>
-        luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Address",parentDevice)
+        luup.variable_get(PING_SID, "Address", parentDevice)
       </run>
     </action>
     <action>
       <serviceId>urn:demo-ron-seese:serviceId:iOSfinder1</serviceId>
       <name>SetAddress</name>
       <run>
-        luup.variable_set("urn:demo-ron-seese:serviceId:iOSfinder1","Address",lul_settings.newAddressValue,parentDevice)
+        luup.variable_set(PING_SID, "Address", lul_settings.newAddressValue, parentDevice)
       </run>
     </action>
     <action>
       <serviceId>urn:demo-ron-seese:serviceId:iOSfinder1</serviceId>
       <name>GetPeriod</name>
       <run>
-        luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Period",parentDevice)
+        luup.variable_get(PING_SID, "Period", parentDevice)
       </run>
     </action>
     <action>
       <serviceId>urn:demo-ron-seese:serviceId:iOSfinder1</serviceId>
       <name>SetPeriod</name>
       <run>
-        luup.variable_set("urn:demo-ron-seese:serviceId:iOSfinder1","Period",lul_settings.newPeriodValue,parentDevice)
+        luup.variable_set(PING_SID, "Period", lul_settings.newPeriodValue, parentDevice)
       </run>
     </action>
     <action>
       <serviceId>urn:demo-ron-seese:serviceId:iOSfinder1</serviceId>
       <name>GetInvert</name>
       <run>
-        luup.variable_get("urn:demo-ron-seese:serviceId:iOSfinder1","Invert",parentDevice)
+        luup.variable_get(PING_SID, "Invert", parentDevice)
       </run>
     </action>
     <action>
       <serviceId>urn:demo-ron-seese:serviceId:iOSfinder1</serviceId>
       <name>SetInvert</name>
       <run>
-        luup.variable_set("urn:demo-ron-seese:serviceId:iOSfinder1","Invert",lul_settings.newInvertValue,parentDevice)
+        luup.variable_set(PING_SID, "Invert", lul_settings.newInvertValue, parentDevice)
+
+        -- Invert the current state of the Sensor also.
+        local tripped = luup.variable_get(SECURITY_SID, "Tripped", parentDevice)
+        if (tripped == "1") then
+            luup.variable_set(SECURITY_SID, "Tripped", "0", parentDevice)
+        else
+            luup.variable_set(SECURITY_SID, "Tripped", "1", parentDevice)
+        end
+      </run>
+    </action>
+
+    <action>
+      <serviceId>urn:upnp-org:serviceId:SwitchPower1</serviceId>
+      <name>SetTarget</name>
+      <run>
+        luup.variable_set(SWITCH_SID, "Target", lul_settings.newTargetValue, parentDevice)
+        luup.variable_set(SWITCH_SID, "Status", lul_settings.newTargetValue, parentDevice)
       </run>
     </action>
   </actionList>

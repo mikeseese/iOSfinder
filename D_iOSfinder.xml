@@ -2,10 +2,11 @@
 <root xmlns="urn:schemas-upnp-org:device-1-0">
   <specVersion>
     <major>1</major>
-    <minor>2</minor>
+    <minor>5</minor>
   </specVersion>
   <device>
-    <deviceType>urn:schemas-micasaverde-com:device:MotionSensor:1</deviceType>
+    <deviceType>urn:schemas-demo-ron-seese:device:iOSfinder:1</deviceType>
+    <staticJson>D_iOSfinder.json</staticJson>
     <friendlyName>iOS Finder</friendlyName>
     <manufacturer>Ron Seese</manufacturer>
     <protocol>cr</protocol>
@@ -19,93 +20,17 @@
         <SCPDURL>S_iOSfinder.xml</SCPDURL>
       </service>
       <service>
-        <serviceType>urn:schemas-demo-ron-seese:service:iOSAwarenessSensor:1</serviceType>
-        <serviceId>urn:demo-ron-seese:serviceId:iOSAwarenessSensor1</serviceId>
-        <SCPDURL>S_iOSAwarenessSensor.xml</SCPDURL>
+        <serviceType>urn:schemas-micasaverde-com:service:SecuritySensor:1</serviceType>
+        <serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+        <SCPDURL>S_SecuritySensor1.xml</SCPDURL>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:SwitchPower:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:SwitchPower1</serviceId>
+        <SCPDURL>S_SwitchPower1.xml</SCPDURL>
       </service>
     </serviceList>
-    <sceneList>
-{
-	"group_1":{
-		"cmd_1": 
-		{
-			"label": "Arm",
-			"serviceId": "urn:micasaverde-com:serviceId:SecuritySensor1",
-			"action": "SetArmed",
-			"arguments":
-			{
-				"newArmedValue": "1"
-			}
-		},
-		"cmd_2": 
-		{
-			"label": "Bypass",
-			"serviceId": "urn:micasaverde-com:serviceId:SecuritySensor1",
-			"action": "SetArmed",
-			"arguments":
-			{
-				"newArmedValue": "0"
-			}
-		}
-	}
-}    
-  </sceneList>
-   
-  <eventList>
-{
-	"event_1":{
-		"label": "Ping sensor has pinged a device",
-		"serviceId": "urn:micasaverde-com:serviceId:SecuritySensor1",
-		"argumentList" :
-		{
-			"argument_1" :
-			{
-				"dataType": "boolean",
-				"defaultValue": "",
-				"allowedValueList" : 
-				{
-					"Yes" : "1",
-					"No" : "0"
-				},
-				"name": "Tripped",
-				"comparisson": "=",
-				"prefix": "Device responded",
-				"suffix": ""
-			}
-		}
-	},
-	"event_2":{
-		"label": "Armed ping sensor has pinged a device",
-		"serviceId": "urn:micasaverde-com:serviceId:SecuritySensor1",
-		"serviceStateTable" : 
-		{
-			"Armed": 
-      {
-        "value": "1",
-        "comparisson": "="
-      }
-		},
-		"argumentList" :
-		{
-			"argument_1" :
-			{
-				"dataType": "boolean",
-				"allowedValueList" : 
-				{
-					"Yes" : "1",
-					"No" : "0"
-				},
-				"name": "Tripped",
-				"comparisson": "=",
-				"prefix": "Device responded",
-				"suffix": ""
-			}
-		}
-	}
-}
-  </eventList>
     <implementationList>
-      <implementationFile>I_iOSAwarenessSensor.xml</implementationFile>
       <implementationFile>I_iOSfinder.xml</implementationFile>
     </implementationList>
   </device>
