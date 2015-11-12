@@ -172,16 +172,53 @@
     --                "0", if host has not responded. No matter for what reason. (error, latency, ...)
     --
     local function executePing(address)
-      local returnCode = os.execute("ping -c 1 " .. address)
+      local command = "ip neigh | grep " .. address
+      local returnCode = os.execute(command .. " | grep FAILED")
+      -- local returnCode = os.execute("ping -c 1 " .. address)
 
       if (returnCode == 0) then
-        -- everything is fine, we reached the host
-        return "1"
+        log("we found an entry in the arp cache, it says it's failed. device is AWAY")
+        return "0"
       else
+        returnCode = os.execute(command)
+        if (returnCode == 0) then
+          log("we found an arp entry that isn't FAILED, device is on network")
+          return "1"
+        else
+          log("we couldn't find any arp entry. let's try pinging to add the arp entry")
+          returnCode = os.execute("ping -c 1 " .. address)
+          if (returnCode == 0) then
+            log("reached the host through ping, they are on network")
+            return "1"
+          else
+            log("check arp entry one more time in case phone is asleep and won't respond to pings")
+            returnCode = os.execute(command .. " | grep FAILED")
+            if (returnCode == 0) then
+              log("we found an entry in the arp cache, it says it's failed. device is AWAY")
+              return "0"
+            else
+              returnCode = os.execute(command)
+              if (returnCode == 0) then
+                log("we found an arp entry that isn't FAILED, device is on netowrk")
+                return "1"
+              else
+                log("we couldn't find any arp entry after ping, device is definitly AWAY")
+                return "0"
+              end
+            end
+          end
+        end
+      end
+
+      -- if (returnCode == 0) then
+        -- everything is fine, we reached the host
+        -- return "1"
+      -- else
         -- something went wrong here
         -- log("abnormal exit while ping execution. ErrorCode: " .. tostring(returnCode))
-        return "0"
-      end
+        -- return "0"
+      -- end
+      
     end
 
 
@@ -224,6 +261,8 @@
       -- Store the current ping result only when it has changed
       local origTripped = luup.variable_get(SECURITY_SID, "Tripped", parentDevice) or "0"
       local allowedFailure = luup.variable_get(PING_SID, "AllowedFailure", parentDevice) or 0
+
+      log("origTripped: " .. origTripped .. " , pingResult: " .. pingResult .. " , currentFailureCount: " .. tostring(currentFailureCount) .. " , allowedFailure: " .. allowedFailure)
 	  
       -- If pingresult is positive, always reset currentFailureCount
       if (pingResult == "1") then
