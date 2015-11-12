@@ -67,6 +67,9 @@
       luup.variable_set(HADEVICE_SID, "Configured", "1", parentDevice)
 
       log("Initialized variable: 'Address' = " .. address)
+      for i in string.gmatch(address, "([^,]+),?") do
+        log("Comma delimited address - " .. i)
+      end
       log("Initialized variable: 'Address2' = " .. address2)
       log("Initialized variable: 'Address3' = " .. address3)
       log("Initialized variable: 'Period' = " .. period)
